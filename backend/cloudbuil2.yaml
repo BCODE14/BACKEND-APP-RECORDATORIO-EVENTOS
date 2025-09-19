@@ -1,0 +1,39 @@
+
+substitutions:
+  _SERVICE_NAME: "mi-api"
+  _REGION: "us-central1"
+
+steps:
+  # 1) Build docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}', '.']
+
+  # 2) Push image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}']
+
+  # 3) Deploy to Cloud Run (usa env vars o secretos)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy ${_SERVICE_NAME} \
+          --image gcr.io/$PROJECT_ID/${_SERVICE_NAME} \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars=PORT=8080
+
+images:
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+
+
+    args: [
+      'run', 'deploy', 'mi-api', #comando para desplegar un servicio de cloud run llamada mi api
+      '--image', 'gcr.io/$PROJECT_ID/mi-api', #imagen que debe usar para la api
+      '--region = ${_REGION}', #la region en donde se desplegara
+      '--platform', 'managed', #indica cloud run managed - servicio administrado por google
+      '--allow-unauthenticated' #todos lo pueden llamar - acceso publico, puedes protegerlos configurando iam solo usuaruis autenticados
+
+    ]

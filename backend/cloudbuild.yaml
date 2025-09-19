@@ -1,0 +1,36 @@
+
+
+#desplegar en google cluod
+
+sustitutions:
+  _SERVICE_NAME: "mi-api"
+  _REGION: us-central1
+
+steps: #indica el comienzo de la lista de pasos que cloud build debe ir ejecutando,#cada paso es un contenedor que ejcutada los comandos
+
+  
+  #paso 1: build
+  - name: 'gcr.io/cloud-builders/docker' #se especifica el contenedor que se utilizara en este caso es el contenedor oficial que teine el cliente docker instalado
+    args: ['build', #comando docker
+           '-t',  #etiqueta de la imagen resultante
+           'gcr.io/$PROJECT_ID/mi_api', #ruta en donde se guardara en el container registry - $PROJECT_ID se sustituye automaticamente por el id del proyecto en la gcp
+            '.'] #contexto de build copia todo lo necesario segun el dockerfile
+
+  #paso 2: push
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/mi_api' ] #sube la imagen al container registry de mi proyecto gcr
+
+  #paso 3: deploy a cloud run
+  - name: 'gcr.io/cloud-builders/gcloud' #usa la imagen gcloud para ejecutar los comandod gcloud
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run deploy ${_SERVICE_NAME} \
+          --image gcr.io/$PROJECT_ID/${_SERVICE_NAME} \
+          --region ${_REGION} \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars=PORT=8080 
+images:
+  - 'gcr.io/$PROJECT_ID/mi-api' #le dice a cloud build que es un artefacto de salida 
