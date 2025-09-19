@@ -7,7 +7,7 @@ from dart:stable as build
 workdir /app
 
 #copiar todos los archivos del directorio local al docker
-copy..
+copy . .
 
 #descargar las dependencias que estan en el archivo pubspec.yaml
 run dar put get
