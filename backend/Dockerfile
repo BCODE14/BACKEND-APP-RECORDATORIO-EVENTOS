@@ -1,34 +1,39 @@
 
 
-#usar la imagen estable de dart
-from dart:stable as build
+# 1) etapa de build: compilar el ejecutable con Dart
+FROM dart:stable AS build
 
-#definir el directorio de trabajo dentro de la app
-workdir /app
+#difinir el directorio de trabajo en docker
+WORKDIR /app
 
-#copiar todos los archivos del directorio local al docker
-copy . .
+# copiar todo el proyecto al contenedor inicio y destino
+COPY . .
 
-#descargar las dependencias que estan en el archivo pubspec.yaml
-run dar put get
+# descargar dependencias
+RUN dart pub get
 
-#compilar el servidor dar a un binario ejecutable
-run dart compile exe bin/server.dart -o bin/server
+# compilar el servidor Dart a un binario nativo
+RUN dart compile exe bin/server.dart -o bin/server
 
+#cambiar los permisos del archivo para que sea ejecutable
+#cambiar permisos de archivos - añadir permiso de ejecución - archivo al que le estás dando permisos de ejecución.
+RUN chmod +x bin/server 
 
-#segunda parte creacion de una imagen vacia
-from scratch
+# 2) etapa de runtime: imagen mínima que contiene sólo runtime + binario
+FROM dart:stable
 
-#copiar desde la etapa build la carpeta /runtime/ que trae el runtime de dart compilado
-copy --from=build /runtime/
+#difinir el directorio de trabajo en docker
+WORKDIR /app
 
-#copiar el compilado server al directorio de trabajo de docker
-copy --from=build /app/bin/server /app/bin/
+# copiar el runtime de Dart desde la etapa build al contenedor final
+#COPY --from=build /runtime/ /
 
-#exponer el puerto para que cluod run pueda conectarse
-expose 8080
+# copiar el binario compilado al directorio /app/bin/ del contenedor final
+COPY --from=build /app/bin/server /app/bin/
 
-#comando que se ejcutara cuando arranque el contenedor
-cmd["/app/bin/server"]
+# Exponer el puerto que usará Cloud Run (no es obligatorio, pero es informativo)
+EXPOSE 8080
 
+# comando que se ejecutará al iniciar el contenedor
+CMD ["/app/bin/server"]
 

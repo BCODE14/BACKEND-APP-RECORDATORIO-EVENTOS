@@ -5,6 +5,8 @@
 sustitutions:
   _SERVICE_NAME: "mi-api"
   _REGION: us-central1
+  _PROJECT_NUMBER: '427821393332'
+  PROJECT_ID: mimetic-gravity-472600-s5 
 
 steps: #indica el comienzo de la lista de pasos que cloud build debe ir ejecutando,#cada paso es un contenedor que ejcutada los comandos
 
@@ -20,17 +22,16 @@ steps: #indica el comienzo de la lista de pasos que cloud build debe ir ejecutan
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/mi_api' ] #sube la imagen al container registry de mi proyecto gcr
 
-  #paso 3: deploy a cloud run
-  - name: 'gcr.io/cloud-builders/gcloud' #usa la imagen gcloud para ejecutar los comandod gcloud
-    entrypoint: 'bash'
+  #paso 3: deploy a cloud run con secretos
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk' #usa la imagen gcloud para ejecutar los comandod gcloud
+    entrypoint: gcloud
     args:
-      - '-c'
-      - |
-        gcloud run deploy ${_SERVICE_NAME} \
-          --image gcr.io/$PROJECT_ID/${_SERVICE_NAME} \
-          --region ${_REGION} \
-          --platform managed \
-          --allow-unauthenticated \
-          --set-env-vars=PORT=8080 
-images:
-  - 'gcr.io/$PROJECT_ID/mi-api' #le dice a cloud build que es un artefacto de salida 
+      [
+        'run', 'deploy', 'mi-api',
+        '--image', 'gcr.io/$PROJECT_ID/mi-api',
+        '--region', 'us-central1',
+        '--platform', 'managed',
+        '--allow-unauthenticated',
+        '--set-secrets=MONGO_URL=projects/$PROJECT_NUMBER/secrets/MONGO_URL:latest,JWT_SECRET=projects/$PROJECT_NUMBER/secrets/JWT_SECRET:latest'
+      ]
+      

@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:googleapis_auth/auth.dart';
-import 'package:googleapis_auth/auth_io.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart';
 import 'package:shelf_router/shelf_router.dart';
@@ -11,20 +9,18 @@ import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart'; //agregar a dependenc
 import 'package:mongo_dart/mongo_dart.dart' as mongo;
 import 'package:dotenv/dotenv.dart' as dotenv;
 import 'package:bcrypt/bcrypt.dart';
-import 'package:http/http.dart' as http;
 
 //cargar variables
-final env = dotenv.DotEnv()..load(); // carga el archivo .env
+//final env = dotenv.DotEnv()..load(); // carga el archivo .env
 
-//configuracion para deploy
-//final String port = Platform.environment['PORT'] ?? '8080';
-//final String jwtclave = Platform.environment['JWT_SECRET']!;
-//final String mongourl = Platform.environment['MONGO_URL']!;
+//configuracion
+final String port = Platform.environment['PORT'] ?? '8080';
+final String jwtclave = Platform.environment['JWT_SECRET']!;
+final String mongourl = Platform.environment['MONGO_URL']!;
 
-//configuracion prueba en local
-final String port = env['PORT'] ?? '8080';
-final String jwtclave = env['JWT_SECRET'] ?? '123456';
-final String mongourl = env['MONGO_URL'] ?? 'urlmongo';
+//final String port = env['PORT'] ?? '8080';
+//final String jwtclave = env['JWT_SECRET'] ?? '123456';
+//final String mongourl = env['MONGO_URL'] ?? 'urlmongo';
 
 late mongo.Db db;
 late mongo.DbCollection collecioneventos;
@@ -209,7 +205,7 @@ Future<Response> loginhandler(Request req) async {
     final token = generarToken(user['usuario']);
 
     return Response.ok(
-      jsonEncode({'token': token, 'id': user['_id'], 'user': user['usuario']}),
+      jsonEncode({'token': token}),
       headers: {'Content-Type': 'application/json'},
     );
   } catch (e) {
@@ -240,24 +236,6 @@ Future<Response> getEventos(Request req) async {
   }
 }
 
-Future<Response> getEventoscondicion(Request req) async {
-  try {
-    final list = await collecioneventos.find({'sincronizado': '0'}).toList();
-    final out = list
-        .map((d) => serializeDoc(Map<String, dynamic>.from(d)))
-        .toList();
-    return Response.ok(
-      jsonEncode(out),
-      headers: {'Content-Type': 'application/json'},
-    );
-  } catch (e) {
-    return Response.internalServerError(
-      body: jsonEncode({'error': 'error interno'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  }
-}
-
 Future<Response> crearevento(Request req) async {
   try {
     final body = await req.readAsString();
@@ -273,10 +251,7 @@ Future<Response> crearevento(Request req) async {
     final evento = {
       'tipo': data['tipo'],
       'fecha': data['fecha'] ?? DateTime.now().toUtc().toIso8601String(),
-      'hora': data['hora'],
-      'nota': data['nota'] ?? '',
-      'id_usuario': data['id_usuario'],
-      'sincronizado': data['sincronizado'],
+      'descripcion': data['descripcion'] ?? '',
     };
 
     final res = await collecioneventos.insertOne(evento);
@@ -316,10 +291,7 @@ Future<Response> actualizarevento(Request req, String id) async {
       mongo.modify
           .set('tipo', data['tipo'])
           .set('fecha', data['fecha'])
-          .set('hora', data['hora'])
-          .set('nota', data['nota'])
-          .set('id_usuario', data['id_usuario'])
-          .set('sincronizado', data['sincronizado']),
+          .set('descripcion', data['descripcion']),
     );
 
     return Response.ok(
@@ -362,117 +334,6 @@ Future<Response> eliminarevento(Request req, String id) async {
   }
 }
 
-//notificaciones
-
-Future<Response> guardartokenfcm(Request req) async {
-  try {
-    final body = await req.readAsString();
-    final data = jsonDecode(body);
-    if (data['token'] == null) {
-      return Response(
-        400,
-        body: jsonEncode({'error': 'el campo no puede estar vacio'}),
-        headers: {'Content-Type': 'application/json'},
-      );
-    }
-
-    final guardartk = {'token': data['token']};
-
-    final colleciontoken = db.collection('token');
-    final res = await colleciontoken.insertOne(guardartk);
-
-    if (res.isSuccess) {
-      print('insertado con exito');
-    }
-
-    return Response(
-      201,
-      body: jsonEncode({'respuesta': 'token guardado con exito'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  } catch (e) {
-    return Response.internalServerError(
-      body: jsonEncode({'error': 'no se pudo guardar el token'}),
-      headers: {'Content-Type': 'application/json'},
-    );
-  }
-}
-
-Future<void> revisareventos() async {
-  final now = DateTime.now().toUtc();
-  final treshorasantes = now.add(const Duration(hours: 3));
-
-  final eventos = await collecioneventos.find({
-    'hora': {r"$gte": now, r"$lte": treshorasantes},
-  }).toList();
-
-  for (final evento in eventos) {
-    // final tipo = evento["tipo"];
-    final hora = evento["hora"] as DateTime;
-    final nota = evento["nota"];
-    final token = evento["token"];
-
-    final horasdiferente = hora.difference(now).inHours;
-
-    if (horasdiferente == 3) {
-      enviarnotificacion(
-        token,
-        "Recordatorio",
-        "Tu evento -> $nota empieza en 3 horas.",
-      );
-    } else if (horasdiferente == 0) {
-      enviarnotificacion(
-        token,
-        "Tu evento ya empezo",
-        "tu evento ->$nota esta en curso.",
-      );
-    }
-  }
-}
-
-//enviar notificaciones via fcm
-Future<void> enviarnotificacion(
-  String token,
-  String titulo,
-  String body,
-) async {
-  const serviceAccountPath = 'credenciales.json';
-  const projectId = 'appeventos-d740e';
-
-  final credentialsJson = File(serviceAccountPath).readAsStringSync();
-  final credentialsMap = jsonDecode(credentialsJson);
-
-  final accountCredentials = ServiceAccountCredentials.fromJson(credentialsMap);
-
-  //Obtener el client autenticado con alcance FCM
-  final client = await clientViaServiceAccount(accountCredentials, [
-    'https://www.googleapis.com/auth/firebase.messaging',
-  ]);
-
-  final serverkeyfcm = "appeventos-d740e-firebase-adminsdk-fbsvc-3a2da44605";
-  final message = {
-    "to": token,
-    "notification": {"title": titulo, "body": body},
-  };
-
-  final response = await http.post(
-    Uri.parse(
-      "https://fcm.googleapis.com/v1/projects/$projectId/messages:send",
-    ),
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "key=$serverkeyfcm",
-    },
-    body: jsonEncode(message),
-  );
-
-  if (response.statusCode == 200) {
-    print("notificacion enviada con exito");
-  } else {
-    print("error al enviar : fcm dice:${response.body}");
-  }
-}
-
 //main
 Future<void> main() async {
   //abrir bbdd
@@ -489,10 +350,7 @@ Future<void> main() async {
 
   final apirouter = Router()
     ..get('/eventos', getEventos)
-    ..get('/eventos/sin', getEventoscondicion)
-    ..post('/eventos/checkevento', revisareventos)
     ..post('/eventos', crearevento)
-    ..post('/eventos/noti', guardartokenfcm)
     ..put('/eventos/<id>', actualizarevento)
     ..delete('/eventos/<id>', eliminarevento);
 
